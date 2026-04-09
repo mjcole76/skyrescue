@@ -25,28 +25,28 @@ export class ArcticWorld {
   }
 
   _setupLighting() {
-    // Cold, overcast arctic light
-    this._ambientLight = new THREE.AmbientLight(0x8899bb, 0.6);
+    // Bright arctic daylight — overcast but visible
+    this._ambientLight = new THREE.AmbientLight(0x99aacc, 0.8);
     this.scene.add(this._ambientLight);
 
-    this._sunLight = new THREE.DirectionalLight(0xddeeff, 0.5);
-    this._sunLight.position.set(20, 30, 40);
+    this._sunLight = new THREE.DirectionalLight(0xeeeeff, 0.7);
+    this._sunLight.position.set(20, 40, 40);
     this._sunLight.castShadow = true;
     this.scene.add(this._sunLight);
 
-    // Cold hemisphere
-    const hemi = new THREE.HemisphereLight(0x8899cc, 0x445566, 0.4);
+    // Cold hemisphere — brighter
+    const hemi = new THREE.HemisphereLight(0x99aadd, 0x556677, 0.5);
     this.scene.add(hemi);
 
-    // Whiteout fog
-    this.scene.fog = new THREE.FogExp2(0xccddee, 0.004);
+    // Light fog — NOT a whiteout at start, thickens over time
+    this.scene.fog = new THREE.FogExp2(0x99bbcc, 0.002);
   }
 
   _createOcean() {
-    // Dark arctic ocean
+    // Arctic ocean — dark blue-green, contrasts with white ice
     const oceanGeo = new THREE.PlaneGeometry(400, 400, 40, 40);
     const oceanMat = new THREE.MeshStandardMaterial({
-      color: 0x1a3344,
+      color: 0x2a4455,
       roughness: 0.3,
       metalness: 0.4,
       transparent: true,
@@ -241,7 +241,7 @@ export class ArcticWorld {
   }
 
   _createSnow() {
-    const snowCount = 4000;
+    const snowCount = 2500;
     const positions = new Float32Array(snowCount * 3);
     for (let i = 0; i < snowCount; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 250;
@@ -251,10 +251,10 @@ export class ArcticWorld {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const mat = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.3,
+      color: 0xeeeeff,
+      size: 0.2,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.6,
     });
     this._snowParticles = new THREE.Points(geo, mat);
     this.scene.add(this._snowParticles);
@@ -354,9 +354,9 @@ export class ArcticWorld {
       pos.needsUpdate = true;
     }
 
-    // Fog thickens over time (blizzard intensifies)
+    // Fog thickens gradually — starts clear, gets challenging late game
     if (this.scene.fog) {
-      this.scene.fog.density = 0.004 + elapsedTime * 0.00005;
+      this.scene.fog.density = 0.002 + elapsedTime * 0.000025;
     }
 
     // Ocean waves

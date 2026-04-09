@@ -14,6 +14,7 @@ import { PostProcessing } from './systems/PostProcessing.js';
 import { MissionManager } from './game/MissionManager.js';
 import { MISSIONS, loadProgress, getStars } from './missions/MissionConfig.js';
 import { TouchControls } from './ui/TouchControls.js';
+import { RadioChatter } from './ui/RadioChatter.js';
 import { HELICOPTER } from './utils/constants.js';
 
 // Detect mobile for performance scaling
@@ -55,9 +56,13 @@ const input = new InputManager();
 const gameState = new GameState();
 const audio = new AudioManager();
 const touchControls = new TouchControls();
+const radio = new RadioChatter(audio);
 
 let lastMuteState = false;
 let lastBeepTime = 0;
+let timeWarning60 = false;
+let timeWarning30 = false;
+let damageWarningCooldown = 0;
 
 // Load saved progress
 loadProgress();
@@ -173,6 +178,14 @@ function launchMission(index) {
   audio.stopTimerWarning();
   endScreen.style.display = 'none';
   touchControls.show();
+
+  // Reset radio state
+  timeWarning60 = false;
+  timeWarning30 = false;
+  damageWarningCooldown = 0;
+
+  // Mission start radio chatter
+  radio.missionStart(config.name);
 }
 
 // ── Rescue callbacks ──
@@ -193,6 +206,7 @@ const rescueCallbacks = {
       2000
     );
     audio.playPickup();
+    radio.survivorPickup(passengersOnboard, HELICOPTER.MAX_PASSENGERS);
   },
   onRescueCancel() {
     hud.hideRescueBar();
@@ -205,6 +219,7 @@ const rescueCallbacks = {
       2500
     );
     audio.playDropoff();
+    radio.delivery(gameState.survivorsSaved, gameState.totalSurvivors);
     if (gameState.allSaved()) {
       endMission(true);
     }
@@ -222,6 +237,7 @@ function endMission(won) {
 
   if (won) {
     audio.playMissionSuccess();
+    radio.missionSuccess();
     const result = gameState.calculateFinalScore(gameState.missionTimer, helicopter.integrity);
     const stars = missionManager.completeMission(result.total);
     const starDisplay = '\u2605'.repeat(stars) + '\u2606'.repeat(3 - stars);
@@ -238,6 +254,8 @@ function endMission(won) {
       'TOTAL SCORE: <span class="stat-val">' + result.total + '</span>';
   } else {
     audio.playMissionFail();
+    const failType = helicopter.integrity <= 0 ? 'destroyed' : gameState.missionTimer <= 0 ? 'time' : 'default';
+    radio.missionFail(failType);
     const reason = helicopter.integrity <= 0 ? 'HELICOPTER DESTROYED' :
                    gameState.missionTimer <= 0 ? 'TIME EXPIRED' : 'MISSION FAILED';
     endTitle.textContent = reason;
@@ -312,6 +330,23 @@ function animate() {
       audio.startTimerWarning();
     } else {
       audio.stopTimerWarning();
+    }
+
+    // Radio chatter — time warnings
+    if (timeLeft <= 60 && timeLeft > 59 && !timeWarning60) {
+      timeWarning60 = true;
+      radio.timeWarning(60);
+    }
+    if (timeLeft <= 30 && timeLeft > 29 && !timeWarning30) {
+      timeWarning30 = true;
+      radio.timeWarning(30);
+    }
+
+    // Radio chatter — damage warning (cooldown so it doesn't spam)
+    damageWarningCooldown -= dt;
+    if (helicopter.integrity < 40 && helicopter.collisionIntensity > 0.5 && damageWarningCooldown <= 0) {
+      radio.damageWarning();
+      damageWarningCooldown = 15; // Don't repeat for 15s
     }
 
     // Check fail conditions

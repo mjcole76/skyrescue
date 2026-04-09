@@ -201,7 +201,7 @@ export class MissionManager {
     this.scene.add = origAdd;
 
     this.particleSystem = null;
-    this.scene.fog = new THREE.FogExp2(0xccddee, 0.004);
+    // Fog set by ArcticWorld._setupLighting — don't override
   }
 
   _createHelipadBeacon() {
