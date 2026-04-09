@@ -8,44 +8,64 @@ export class RadioChatter {
     this._showing = false;
     this._hideTimer = null;
     this._typeTimer = null;
-    this._build();
+    this._built = false;
   }
 
-  _build() {
+  _ensureBuilt() {
+    if (this._built) return;
+    this._built = true;
+
     this._el = document.createElement('div');
-    this._el.style.cssText = `
-      position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
-      z-index: 20; pointer-events: none; opacity: 0; transition: opacity 0.3s;
-      max-width: 500px; width: 90%;
+    this._el.id = 'radio-chatter';
+    this._el.innerHTML = `
+      <div style="
+        background: rgba(0,10,0,0.8);
+        border: 1px solid rgba(80,200,80,0.5);
+        border-radius: 4px;
+        padding: 10px 16px;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        box-shadow: 0 0 15px rgba(0,200,0,0.1);
+      ">
+        <div id="radio-callsign" style="
+          font-family: 'Orbitron', monospace;
+          font-size: 9px;
+          font-weight: 700;
+          color: rgba(80,220,80,0.9);
+          letter-spacing: 1px;
+          white-space: nowrap;
+          border: 1px solid rgba(80,200,80,0.4);
+          border-radius: 2px;
+          padding: 3px 7px;
+          margin-top: 1px;
+          flex-shrink: 0;
+        "></div>
+        <div id="radio-text" style="
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 13px;
+          color: rgba(180,255,180,0.95);
+          line-height: 1.5;
+          letter-spacing: 0.5px;
+        "></div>
+      </div>
     `;
 
-    const inner = document.createElement('div');
-    inner.style.cssText = `
-      background: rgba(0,0,0,0.75); border: 1px solid rgba(100,200,100,0.4);
-      border-radius: 4px; padding: 10px 16px; backdrop-filter: blur(4px);
-      display: flex; align-items: flex-start; gap: 10px;
-    `;
+    Object.assign(this._el.style, {
+      position: 'fixed',
+      top: '75px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: '60',
+      pointerEvents: 'none',
+      maxWidth: '520px',
+      width: '90%',
+      display: 'none',
+    });
 
-    // Radio icon
-    const icon = document.createElement('div');
-    icon.style.cssText = `
-      font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: 700;
-      color: rgba(100,220,100,0.8); letter-spacing: 1px; white-space: nowrap;
-      border: 1px solid rgba(100,200,100,0.3); border-radius: 2px;
-      padding: 2px 6px; margin-top: 2px; flex-shrink: 0;
-    `;
-    this._callsignEl = icon;
-    inner.appendChild(icon);
-
-    this._textEl = document.createElement('div');
-    this._textEl.style.cssText = `
-      font-family: 'Share Tech Mono', monospace; font-size: 12px;
-      color: rgba(200,255,200,0.9); line-height: 1.5; letter-spacing: 0.5px;
-    `;
-    inner.appendChild(this._textEl);
-
-    this._el.appendChild(inner);
     document.body.appendChild(this._el);
+    this._callsignEl = document.getElementById('radio-callsign');
+    this._textEl = document.getElementById('radio-text');
   }
 
   _playStaticBurst() {
@@ -53,26 +73,25 @@ export class RadioChatter {
     const ctx = this.audio.ctx;
     if (!ctx) return;
 
-    // Short radio static burst
-    const duration = 0.15;
+    const duration = 0.18;
     const bufferSize = Math.floor(ctx.sampleRate * duration);
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
       const env = i < bufferSize * 0.1 ? i / (bufferSize * 0.1) :
                   i > bufferSize * 0.7 ? (bufferSize - i) / (bufferSize * 0.3) : 1;
-      data[i] = (Math.random() * 2 - 1) * 0.12 * env;
+      data[i] = (Math.random() * 2 - 1) * 0.15 * env;
     }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 2000;
-    bp.Q.value = 1;
+    bp.frequency.value = 2200;
+    bp.Q.value = 0.8;
 
     const gain = ctx.createGain();
-    gain.gain.value = 0.3;
+    gain.gain.value = 0.35;
 
     source.connect(bp);
     bp.connect(gain);
@@ -81,6 +100,7 @@ export class RadioChatter {
   }
 
   show(callsign, text, duration = 4000) {
+    this._ensureBuilt();
     this._queue.push({ callsign, text, duration });
     if (!this._showing) this._next();
   }
@@ -95,9 +115,8 @@ export class RadioChatter {
 
     this._callsignEl.textContent = msg.callsign;
     this._textEl.textContent = '';
-    this._el.style.opacity = '1';
+    this._el.style.display = 'block';
 
-    // Radio static on open
     this._playStaticBurst();
 
     // Typewriter effect
@@ -110,43 +129,34 @@ export class RadioChatter {
       } else {
         clearInterval(this._typeTimer);
       }
-    }, 25);
+    }, 22);
 
     clearTimeout(this._hideTimer);
     this._hideTimer = setTimeout(() => {
-      this._el.style.opacity = '0';
-      setTimeout(() => this._next(), 400);
+      this._el.style.display = 'none';
+      setTimeout(() => this._next(), 300);
     }, msg.duration);
   }
 
-  // ── Pre-built messages for game events ──
+  // ── Pre-built messages ──
 
   missionStart(missionName) {
-    this.show('DISPATCH', `All units, be advised: ${missionName} operation is GO. Rescue One, you are cleared for approach.`, 4500);
+    this.show('DISPATCH', `All units — ${missionName} operation is GO. Rescue One, you are cleared hot.`, 4500);
     setTimeout(() => {
-      this.show('RESCUE-1', 'Copy dispatch. Rescue One en route. Eyes on target.', 3000);
-    }, 5000);
-  }
-
-  survivorSpotted() {
-    const msgs = [
-      'Visual on survivor. Moving to hover position.',
-      'Survivor spotted. Beginning approach.',
-      'Contact. I see them. Holding steady.',
-    ];
-    this.show('RESCUE-1', msgs[Math.floor(Math.random() * msgs.length)], 2500);
+      this.show('RESCUE-1', 'Copy dispatch. Rescue One inbound. Eyes on target.', 3500);
+    }, 5200);
   }
 
   survivorPickup(count, max) {
-    if (count === max) {
-      this.show('RESCUE-1', `That's ${count} aboard, we're at capacity. Heading to the pad.`, 3000);
+    if (count >= max) {
+      this.show('RESCUE-1', `That's ${count} aboard — at capacity. Heading to the pad.`, 3000);
     } else {
       const msgs = [
-        `Survivor secure. ${count} of ${max} aboard.`,
-        `Got 'em. ${count} onboard, room for ${max - count} more.`,
-        `Pickup confirmed. Carrying ${count}.`,
+        `Survivor secure. ${count} of ${max} onboard.`,
+        `Got 'em. Carrying ${count}, room for ${max - count} more.`,
+        `Pickup confirmed. ${count} aboard.`,
       ];
-      this.show('RESCUE-1', msgs[Math.floor(Math.random() * msgs.length)], 2500);
+      this.show('RESCUE-1', msgs[Math.floor(Math.random() * msgs.length)], 3000);
     }
   }
 
@@ -155,37 +165,37 @@ export class RadioChatter {
       this.show('DISPATCH', 'All survivors accounted for. Outstanding work, Rescue One.', 4000);
     } else {
       const remaining = total - saved;
-      this.show('HOSPITAL', `Receiving casualties. ${remaining} still in the field.`, 3000);
+      this.show('HOSPITAL', `Casualties received. ${remaining} still out there.`, 3000);
     }
   }
 
   timeWarning(seconds) {
     if (seconds === 30) {
-      this.show('DISPATCH', 'Rescue One, you have 30 seconds. Get them out NOW.', 3500);
+      this.show('DISPATCH', 'Rescue One — 30 seconds! Get them out NOW!', 3500);
     } else if (seconds === 60) {
-      this.show('DISPATCH', 'One minute remaining. Expedite all operations.', 3000);
+      this.show('DISPATCH', 'One minute remaining. Expedite all operations.', 3500);
     }
   }
 
   damageWarning() {
     const msgs = [
-      'Taking damage! Watch your clearance!',
-      'Hull integrity dropping. Be careful out there.',
-      'We\'re hit! Pull back from the hazard zone.',
+      'Taking hits! Watch your clearance, Rescue One!',
+      'Hull integrity dropping — pull back from the hazard!',
+      'Damage report — we can\'t take much more of this!',
     ];
-    this.show('RESCUE-1', msgs[Math.floor(Math.random() * msgs.length)], 2500);
+    this.show('RESCUE-1', msgs[Math.floor(Math.random() * msgs.length)], 3000);
   }
 
   missionSuccess() {
-    this.show('DISPATCH', 'Mission complete. All survivors delivered. RTB, Rescue One. Well done.', 5000);
+    this.show('DISPATCH', 'Mission complete. All survivors safe. RTB Rescue One — well done.', 5000);
   }
 
   missionFail(reason) {
     const msgs = {
-      time: 'Time\'s up. Recall all units. We lost this one.',
-      destroyed: 'Rescue One is down! Dispatch emergency recovery.',
-      default: 'Mission aborted. Stand down.',
+      time: 'Time\'s up. All units stand down. We lost this one.',
+      destroyed: 'Rescue One is down! Dispatch emergency recovery team!',
+      default: 'Mission aborted. All units RTB.',
     };
-    this.show('DISPATCH', msgs[reason] || msgs.default, 4000);
+    this.show('DISPATCH', msgs[reason] || msgs.default, 4500);
   }
 }
