@@ -28,7 +28,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 renderer.shadowMap.enabled = !isMobile;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.5;
 document.body.appendChild(renderer.domElement);
 
 const clock = new THREE.Clock();
@@ -111,7 +111,7 @@ function renderMissionCards() {
       `<span class="mission-star${s <= m.bestStars ? ' earned' : ''}">\u2605</span>`
     ).join('');
 
-    const diffLabels = ['EASY', 'MEDIUM', 'HARD'];
+    const diffLabels = ['EASY', 'MEDIUM', 'HARD', 'EXTREME'];
 
     card.innerHTML = `
       <div class="mission-card-name">${m.name}</div>
@@ -180,7 +180,7 @@ const rescueCallbacks = {
   onRescueProgress(progress) {
     hud.showRescueProgress(progress);
     const now = performance.now();
-    if (now - lastBeepTime > 300) {
+    if (now - lastBeepTime > 500) {
       audio.playRescueBeep(progress);
       lastBeepTime = now;
     }
@@ -304,6 +304,9 @@ function animate() {
     hud.updateSurvivors(gameState.survivorsSaved, gameState.totalSurvivors);
     hud.updateIntegrity(helicopter.integrity);
 
+    // Mission may have ended during rescue callback — bail out
+    if (!gameState.isPlaying) return;
+
     // Timer warning beeps in last 30s
     if (timeLeft <= 30 && timeLeft > 0) {
       audio.startTimerWarning();
@@ -327,7 +330,8 @@ function animate() {
     lastMuteState = !!input.keys['KeyM'];
 
     // Minimap
-    minimap.update(helicopter, missionManager.buildings, survivors);
+    const hpPos = missionManager.hospitalPad ? missionManager.hospitalPad.position : null;
+    minimap.update(helicopter, missionManager.buildings, survivors, hpPos);
   } else {
     chaseCamera.updateMenuOrbit(elapsedTime);
     // Keep mission world updating for menu background (flashing lights etc.)

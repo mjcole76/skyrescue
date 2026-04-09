@@ -21,7 +21,7 @@ export const MISSIONS = [
     timer: 180,
     totalSurvivors: 4,
     hazards: ['Wind gusts push helicopter', 'Fog rolls in over time', 'Narrow cliff approaches'],
-    unlocked: false,
+    unlocked: true,
     bestStars: 0,
     starThresholds: [3500, 6000, 9000],
   },
@@ -34,9 +34,35 @@ export const MISSIONS = [
     timer: 200,
     totalSurvivors: 6,
     hazards: ['Rising water level', 'Rain reduces visibility', 'Floating debris'],
-    unlocked: false,
+    unlocked: true,
     bestStars: 0,
     starThresholds: [4000, 7000, 10000],
+  },
+  {
+    id: 'highway_pileup',
+    name: 'NIGHTFALL',
+    subtitle: 'Highway Pileup Rescue',
+    description: 'A massive pileup on the elevated highway. Pitch dark — your searchlight is your only guide. Moving traffic adds to the chaos.',
+    difficulty: 3,
+    timer: 160,
+    totalSurvivors: 5,
+    hazards: ['Near-zero visibility', 'Moving traffic', 'Vehicle fires'],
+    unlocked: true,
+    bestStars: 0,
+    starThresholds: [3500, 6500, 9500],
+  },
+  {
+    id: 'arctic_rescue',
+    name: 'WHITEOUT',
+    subtitle: 'Arctic Ice Rescue',
+    description: 'Researchers stranded on drifting ice floes in a blizzard. Floes drift apart. Helicopter icing drains integrity unless you keep moving.',
+    difficulty: 4,
+    timer: 170,
+    totalSurvivors: 5,
+    hazards: ['Blizzard wind gusts', 'Ice floes drift apart', 'Helicopter icing when stationary'],
+    unlocked: true,
+    bestStars: 0,
+    starThresholds: [4000, 7500, 11000],
   },
 ];
 
@@ -53,7 +79,8 @@ export function loadProgress() {
     if (data && data.missions) {
       data.missions.forEach((saved, i) => {
         if (MISSIONS[i]) {
-          MISSIONS[i].unlocked = saved.unlocked;
+          // Only lock if the default is unlocked=false (keep defaults if unlocked=true)
+          if (saved.unlocked) MISSIONS[i].unlocked = true;
           MISSIONS[i].bestStars = saved.bestStars || 0;
         }
       });

@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { RESCUE, HELICOPTER, SCORING } from '../utils/constants.js';
 
 export class RescueSystem {
@@ -10,23 +9,26 @@ export class RescueSystem {
   }
 
   update(helicopter, dt, callbacks) {
-    const heliPos = helicopter.position;
+    const hx = helicopter.position.x;
+    const hy = helicopter.position.y;
+    const hz = helicopter.position.z;
     let nearSurvivor = null;
     let nearDist = Infinity;
 
-    // Check survivors
-    this.survivors.forEach(s => {
-      if (s.userData.rescued) return;
-      const dist = new THREE.Vector2(
-        heliPos.x - s.position.x, heliPos.z - s.position.z
-      ).length();
-      const altDiff = Math.abs(heliPos.y - s.position.y);
+    // Check survivors — no allocations
+    for (let i = 0; i < this.survivors.length; i++) {
+      const s = this.survivors[i];
+      if (s.userData.rescued) continue;
+      const dx = hx - s.position.x;
+      const dz = hz - s.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const altDiff = Math.abs(hy - s.position.y);
 
       if (dist < RESCUE.HOVER_RADIUS && altDiff < RESCUE.MAX_ALT_DIFF && dist < nearDist) {
         nearSurvivor = s;
         nearDist = dist;
       }
-    });
+    }
 
     // Rescue progress
     if (nearSurvivor && helicopter.passengersOnboard < HELICOPTER.MAX_PASSENGERS) {
@@ -58,13 +60,12 @@ export class RescueSystem {
       }
     }
 
-    // Check drop-off
+    // Check drop-off — no allocations
     if (helicopter.passengersOnboard > 0) {
-      const distToPad = new THREE.Vector2(
-        heliPos.x - this.hospitalPad.position.x,
-        heliPos.z - this.hospitalPad.position.z
-      ).length();
-      const altToPad = Math.abs(heliPos.y - this.hospitalPad.position.y);
+      const pdx = hx - this.hospitalPad.position.x;
+      const pdz = hz - this.hospitalPad.position.z;
+      const distToPad = Math.sqrt(pdx * pdx + pdz * pdz);
+      const altToPad = Math.abs(hy - this.hospitalPad.position.y);
 
       if (distToPad < RESCUE.DROPOFF_RADIUS && altToPad < 6) {
         const delivered = helicopter.passengersOnboard;

@@ -59,9 +59,9 @@ export class PostProcessing {
     // Bloom — fire glow, embers, lights
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.7,   // strength
+      0.8,   // strength
       0.5,   // radius
-      0.75   // threshold
+      0.65   // threshold
     );
     this.composer.addPass(this.bloomPass);
 
