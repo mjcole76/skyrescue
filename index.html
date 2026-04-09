@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SkyRescue — Rescue Helicopter Game</title>
+<meta name="description" content="Fly a rescue helicopter into disaster zones. Save survivors from burning buildings, mountain cliffs, and rising floods. Free browser game.">
+<meta property="og:title" content="SkyRescue — Rescue Helicopter Game">
+<meta property="og:description" content="Fly a rescue helicopter into disaster zones. Save survivors before time runs out!">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#cc2200">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚁</text></svg>">
+<link rel="stylesheet" href="/src/ui/styles.css">
+</head>
+<body>
+
+<div id="start-screen">
+  <div class="title">SKYRESCUE</div>
+  <div class="subtitle">EMERGENCY RESPONSE UNIT</div>
+  <button class="btn" id="btn-start">SELECT MISSION</button>
+  <div class="controls-hint">
+    <span>WASD / ARROWS</span> — Move &nbsp;&nbsp; <span>SPACE</span> — Ascend &nbsp;&nbsp; <span>SHIFT</span> — Descend<br>
+    <span>Q/E</span> — Rotate &nbsp;&nbsp; <span>M</span> — Mute<br>
+    Hover over survivors to rescue — Deliver to <span>HOSPITAL PAD</span>
+  </div>
+</div>
+
+<div id="mission-screen" style="display:none;">
+  <div class="title" style="font-size:36px;margin-bottom:30px;">SELECT MISSION</div>
+  <div id="mission-cards" class="mission-cards"></div>
+  <button class="btn btn-back" id="btn-back-to-menu">BACK</button>
+</div>
+
+<div id="end-screen">
+  <div class="end-title" id="end-title">MISSION COMPLETE</div>
+  <div class="end-stats" id="end-stats"></div>
+  <button class="btn" id="btn-restart">RETRY MISSION</button>
+</div>
+
+<div id="hud" style="display:none;">
+  <div class="hud-top">
+    <div class="hud-panel">
+      <div class="hud-label">Survivors</div>
+      <div class="hud-value" id="hud-survivors">0 / 5</div>
+    </div>
+
+    <div class="hud-panel" style="text-align:center;">
+      <div class="hud-label">Time Remaining</div>
+      <div class="hud-value" id="hud-timer">120</div>
+    </div>
+
+    <div class="hud-panel">
+      <div class="hud-label">Integrity</div>
+      <div class="integrity-bar"><div class="integrity-fill" id="integrity-fill"></div></div>
+      <div class="hud-label" style="margin-top:8px;">Onboard</div>
+      <div class="passengers-icons" id="passengers-icons"></div>
+    </div>
+  </div>
+
+  <div class="rescue-bar-container" id="rescue-bar">
+    <div class="rescue-bar-bg"><div class="rescue-bar-fill" id="rescue-bar-fill"></div></div>
+    <div class="rescue-bar-label">RESCUING...</div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="hud-prompt" id="hud-prompt" style="display:none;"></div>
+  </div>
+
+  <canvas id="minimap" class="minimap-container" width="150" height="150"></canvas>
+  <div class="minimap-label" style="position:fixed;bottom:155px;right:25px;">RADAR</div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
