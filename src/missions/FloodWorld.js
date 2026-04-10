@@ -352,9 +352,9 @@ export class FloodWorld {
   }
 
   update(dt, helicopter, elapsedTime) {
-    // Water rises SLOWLY — 0.15 units/sec so game lasts the full 200s timer
-    // Water goes from -0.5 to about 29.5 over 200s
-    this.waterLevel += 0.15 * dt;
+    // Water rises very slowly — survivors should be rescuable for most of the mission
+    // From -0.5, reaching ~12 at 200s (the tallest rooftops)
+    this.waterLevel += 0.06 * dt;
 
     if (this._waterMesh) {
       this._waterMesh.position.y = this.waterLevel;
@@ -372,13 +372,13 @@ export class FloodWorld {
       pos.needsUpdate = true;
     }
 
-    // Check if survivors are submerged (water reaches near rooftop)
+    // Check if survivors are submerged — only when water fully covers rooftop
+    // baseY is the standing height on the roof peak; water must go ABOVE that
     for (let i = 0; i < this.survivors.length; i++) {
       const s = this.survivors[i];
       if (s.userData.rescued) continue;
-      // Survivor lost when water reaches their rooftop level
-      if (this.waterLevel > s.userData.baseY - 1) {
-        s.userData.rescued = true; // counted as lost
+      if (this.waterLevel > s.userData.baseY + 1.5) {
+        s.userData.rescued = true;
         s.visible = false;
       }
     }
