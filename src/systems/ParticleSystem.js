@@ -150,15 +150,18 @@ export class ParticleSystem {
   }
 
   update(dt, elapsedTime, camera, heliPos) {
-    const windX = Math.sin(elapsedTime * 0.3) * 0.5 + 0.3; // Gentle wind drift
+    const windX = Math.sin(elapsedTime * 0.3) * 0.5 + 0.3;
+    this._frame = (this._frame || 0) + 1;
 
     // ── Smoke ──
-    this.smokeParticles.forEach(s => {
+    for (let i = 0; i < this.smokeParticles.length; i++) {
+      const s = this.smokeParticles[i];
       s.position.y += s.userData.vy * dt;
       s.position.x += (s.userData.vx + windX * s.userData.windDrift) * dt;
       s.position.z += s.userData.vz * dt;
       s.rotation.z += s.userData.rotSpeed * dt;
-      s.lookAt(camera.position);
+      // Only face camera every 3rd frame, staggered per particle
+      if ((this._frame + i) % 3 === 0) s.lookAt(camera.position);
 
       // Rotor downwash — push smoke away when helicopter is close
       if (heliPos) {
@@ -185,13 +188,14 @@ export class ParticleSystem {
       // Smoke expands as it rises
       const scale = 1 + t * 3;
       s.scale.setScalar(scale);
-    });
+    }
 
     // ── Fire ──
-    this.fireParticles.forEach(f => {
+    for (let i = 0; i < this.fireParticles.length; i++) {
+      const f = this.fireParticles[i];
       f.position.y += f.userData.vy * dt;
       f.position.x += f.userData.vx * dt;
-      f.lookAt(camera.position);
+      if ((this._frame + i) % 3 === 0) f.lookAt(camera.position);
 
       if (f.position.y > f.userData.maxY) {
         f.position.y = f.userData.baseY + Math.random() * 2;
@@ -203,10 +207,11 @@ export class ParticleSystem {
       const flicker2 = Math.sin(elapsedTime * f.userData.flickerSpeed * 1.7 + f.userData.flicker * 2);
       f.material.opacity = 0.5 + flicker * 0.3 + flicker2 * 0.15;
       f.scale.setScalar(f.userData.scaleBase + flicker * 0.3);
-    });
+    }
 
     // ── Embers ──
-    this.emberParticles.forEach(e => {
+    for (let i = 0; i < this.emberParticles.length; i++) {
+      const e = this.emberParticles[i];
       e.position.y += e.userData.vy * dt;
       e.position.x += (e.userData.vx + windX * 2) * dt;
       e.position.z += e.userData.vz * dt;
@@ -224,8 +229,8 @@ export class ParticleSystem {
       // Twinkle
       const twinkle = Math.sin(elapsedTime * e.userData.twinkleSpeed + e.userData.twinkle);
       e.material.opacity = 0.4 + twinkle * 0.5;
-      e.lookAt(camera.position);
-    });
+      if ((this._frame + i) % 4 === 0) e.lookAt(camera.position);
+    }
 
     // ── Fire lights flicker ──
     const f1 = Math.sin(elapsedTime * 7) * 1.2 + Math.sin(elapsedTime * 13) * 0.6;
