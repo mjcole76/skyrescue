@@ -269,9 +269,12 @@ export class HighwayWorld {
         hl.position.set(x, 0.5, 1.8);
         group.add(hl);
       });
-      const headlight = new THREE.PointLight(0xffffcc, 1.5, 20);
-      headlight.position.set(0, 0.5, 2.5);
-      group.add(headlight);
+      // Only add headlight to every other car to reduce PointLight count
+      if (i % 2 === 0) {
+        const headlight = new THREE.PointLight(0xffffcc, 2, 15);
+        headlight.position.set(0, 0.5, 2.5);
+        group.add(headlight);
+      }
 
       // Taillights
       const tlMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
@@ -301,11 +304,11 @@ export class HighwayWorld {
   }
 
   _createBarriers() {
-    // Jersey barriers along highway edges
+    // Jersey barriers — use longer segments to reduce mesh count
     const barrierMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.8 });
     [-7.8, 7.8].forEach(x => {
-      for (let z = -95; z <= 95; z += 3) {
-        const barrier = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 2.5), barrierMat);
+      for (let z = -90; z <= 90; z += 15) {
+        const barrier = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 14), barrierMat);
         barrier.position.set(x, 4.9, z);
         this.scene.add(barrier);
       }
@@ -345,10 +348,10 @@ export class HighwayWorld {
       }
     }
 
-    // Streetlights along highway
+    // Streetlights along highway (fewer to reduce PointLights)
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffdd88 });
-    for (let z = -90; z <= 90; z += 20) {
+    for (let z = -90; z <= 90; z += 40) {
       [-10, 10].forEach(x => {
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 8, 6), poleMat);
         pole.position.set(x, 4, z);
@@ -366,6 +369,8 @@ export class HighwayWorld {
   }
 
   update(dt, helicopter, elapsedTime) {
+    this._frame = (this._frame || 0) + 1;
+
     // Moving traffic
     for (let i = 0; i < this._movingTraffic.length; i++) {
       const t = this._movingTraffic[i];
@@ -385,7 +390,8 @@ export class HighwayWorld {
         fl.position.y += fl.userData.vy * dt;
         if (fl.position.y > fl.userData.maxY) fl.position.y = fl.userData.baseY;
         fl.material.opacity = 0.5 + Math.sin(elapsedTime * fl.userData.flicker + i) * 0.3;
-        fl.lookAt(helicopter.position);
+        // Stagger lookAt to reduce per-frame cost
+        if ((this._frame + i) % 4 === 0) fl.lookAt(helicopter.position);
       }
     }
   }

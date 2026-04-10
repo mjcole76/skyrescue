@@ -97,6 +97,7 @@ export class RadioChatter {
     bp.connect(gain);
     gain.connect(this.audio.master);
     source.start();
+    source.onended = () => { source.disconnect(); bp.disconnect(); gain.disconnect(); };
   }
 
   show(callsign, text, duration = 4000) {
