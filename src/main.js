@@ -371,6 +371,7 @@ function animate() {
     // Mute toggle (M key)
     if (input.keys['KeyM'] && !lastMuteState) {
       const muted = audio.toggleMute();
+      if (muted) radio.cancelSpeech();
       hud.showPrompt(muted ? 'AUDIO MUTED' : 'AUDIO ON', 1000);
     }
     lastMuteState = !!input.keys['KeyM'];

@@ -17,6 +17,7 @@ export class RadioChatter {
   }
 
   resetForMission() {
+    this.cancelSpeech();
     this._pendingTimeouts.forEach(clearTimeout);
     this._pendingTimeouts.length = 0;
     this._ambientTimer = 0;
@@ -87,36 +88,97 @@ export class RadioChatter {
     const ctx = this.audio.ctx;
     if (!ctx) return;
 
-    const duration = 0.18;
+    if (ctx.state === 'suspended') {
+      void ctx.resume();
+    }
+
+    const t0 = ctx.currentTime;
+    const duration = 0.32;
     const bufferSize = Math.floor(ctx.sampleRate * duration);
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      const env = i < bufferSize * 0.1 ? i / (bufferSize * 0.1) :
-                  i > bufferSize * 0.7 ? (bufferSize - i) / (bufferSize * 0.3) : 1;
-      data[i] = (Math.random() * 2 - 1) * 0.15 * env;
+      const env = i < bufferSize * 0.08 ? i / (bufferSize * 0.08) :
+                  i > bufferSize * 0.72 ? (bufferSize - i) / (bufferSize * 0.28) : 1;
+      data[i] = (Math.random() * 2 - 1) * 0.26 * env;
     }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 2200;
-    bp.Q.value = 0.8;
+    bp.frequency.value = 2400;
+    bp.Q.value = 0.65;
 
     const gain = ctx.createGain();
-    gain.gain.value = 0.35;
+    gain.gain.setValueAtTime(0.55, t0);
 
     source.connect(bp);
     bp.connect(gain);
     gain.connect(this.audio.master);
-    source.start();
+    source.start(t0);
     source.onended = () => { source.disconnect(); bp.disconnect(); gain.disconnect(); };
+
+    // Short "squelch" tone so the open is audible over the rotor
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, t0);
+    osc.frequency.exponentialRampToValueAtTime(520, t0 + 0.12);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t0);
+    og.gain.linearRampToValueAtTime(0.14, t0 + 0.02);
+    og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.14);
+    osc.connect(og);
+    og.connect(this.audio.master);
+    osc.start(t0);
+    osc.stop(t0 + 0.16);
+    osc.onended = () => { osc.disconnect(); og.disconnect(); };
   }
 
-  show(callsign, text, duration = 4000) {
+  cancelSpeech() {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  _speakMessage(callsign, text) {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    if (!this.audio || this.audio.muted || !this.audio.started) return;
+
+    window.speechSynthesis.cancel();
+
+    const line = `${callsign}. ${text}`.replace(/—/g, ', ');
+    const u = new SpeechSynthesisUtterance(line);
+    u.rate = 0.9;
+    u.pitch = 0.88;
+    u.volume = 0.92;
+
+    const runSpeak = () => {
+      const v2 = speechSynthesis.getVoices();
+      const pick = v2.find((v) => v.lang === 'en-US')
+        || v2.find((v) => v.lang && v.lang.startsWith('en'));
+      if (pick) u.voice = pick;
+      speechSynthesis.speak(u);
+    };
+
+    if (speechSynthesis.getVoices().length) {
+      runSpeak();
+    } else {
+      let done = false;
+      const once = () => {
+        if (done) return;
+        done = true;
+        speechSynthesis.removeEventListener('voiceschanged', once);
+        runSpeak();
+      };
+      speechSynthesis.addEventListener('voiceschanged', once, { once: true });
+      setTimeout(once, 400);
+    }
+  }
+
+  show(callsign, text, duration = 4000, { speak = true } = {}) {
     this._ensureBuilt();
-    this._queue.push({ callsign, text, duration });
+    this._queue.push({ callsign, text, duration, speak });
     if (!this._showing) this._next();
   }
 
@@ -133,6 +195,9 @@ export class RadioChatter {
     this._el.style.display = 'block';
 
     this._playStaticBurst();
+    if (msg.speak !== false) {
+      this._speakMessage(msg.callsign, msg.text);
+    }
 
     // Typewriter effect
     let charIndex = 0;
@@ -244,7 +309,9 @@ export class RadioChatter {
     if (timeLeft < 45) return;
 
     const ambient = RadioChatter._pickAmbient(passengersOnboard, survivorsSaved, totalSurvivors, missionId);
-    if (ambient) this.show(ambient[0], ambient[1], 3200 + Math.floor(Math.random() * 800));
+    if (ambient) {
+      this.show(ambient[0], ambient[1], 3200 + Math.floor(Math.random() * 800), { speak: false });
+    }
   }
 
   static _pickAmbient(passengersOnboard, saved, total, missionId) {

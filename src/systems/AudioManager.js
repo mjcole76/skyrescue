@@ -24,6 +24,11 @@ export class AudioManager {
     this.master.connect(this.ctx.destination);
     this.started = true;
 
+    // Browsers may start the context as "suspended" until explicitly resumed.
+    if (this.ctx.state === 'suspended') {
+      void this.ctx.resume();
+    }
+
     this._initRotor();
     this._initWind();
     this._initFire();
