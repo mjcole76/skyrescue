@@ -183,9 +183,10 @@ function launchMission(index) {
   timeWarning60 = false;
   timeWarning30 = false;
   damageWarningCooldown = 0;
+  radio.resetForMission();
 
   // Mission start radio chatter
-  radio.missionStart(config.name);
+  radio.missionStart(config.name, config.id);
 }
 
 // ── Rescue callbacks ──
@@ -348,6 +349,16 @@ function animate() {
       radio.damageWarning();
       damageWarningCooldown = 15; // Don't repeat for 15s
     }
+
+    const missionCfg = missionManager.getMissionConfig();
+    radio.tick(dt, {
+      timeLeft,
+      missionDuration: missionCfg.timer,
+      survivorsSaved: gameState.survivorsSaved,
+      totalSurvivors: gameState.totalSurvivors,
+      passengersOnboard: helicopter.passengersOnboard,
+      missionId: missionCfg.id,
+    });
 
     // Check fail conditions
     if (timeLeft <= 0 || helicopter.integrity <= 0) {
