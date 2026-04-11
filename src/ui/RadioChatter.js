@@ -83,102 +83,177 @@ export class RadioChatter {
   }
 
   _playStaticBurst() {
-    if (!this.audio || !this.audio.started || this.audio.muted) return;
-    const ctx = this.audio.ctx;
+    const ctx = RadioChatter._resumeRadioCtx(this);
     if (!ctx) return;
-
-    if (ctx.state === 'suspended') {
-      void ctx.resume();
-    }
-
     const t0 = ctx.currentTime;
-    const duration = 0.32;
-    const bufferSize = Math.floor(ctx.sampleRate * duration);
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      const env = i < bufferSize * 0.08 ? i / (bufferSize * 0.08) :
-                  i > bufferSize * 0.72 ? (bufferSize - i) / (bufferSize * 0.28) : 1;
-      data[i] = (Math.random() * 2 - 1) * 0.26 * env;
-    }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 2400;
-    bp.Q.value = 0.65;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.55, t0);
-
-    source.connect(bp);
-    bp.connect(gain);
-    gain.connect(this.audio.master);
-    source.start(t0);
-    source.onended = () => { source.disconnect(); bp.disconnect(); gain.disconnect(); };
-
-    // Short "squelch" tone so the open is audible over the rotor
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, t0);
-    osc.frequency.exponentialRampToValueAtTime(520, t0 + 0.12);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0, t0);
-    og.gain.linearRampToValueAtTime(0.14, t0 + 0.02);
-    og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.14);
-    osc.connect(og);
-    og.connect(this.audio.master);
-    osc.start(t0);
-    osc.stop(t0 + 0.16);
-    osc.onended = () => { osc.disconnect(); og.disconnect(); };
+    const master = this.audio.master;
+    RadioChatter._pttMicClick(ctx, master, t0, true);
+    RadioChatter._dispatchHissOpen(ctx, master, t0 + 0.0025);
   }
 
-  /** Short PTT-off style click when the radio line dismisses */
+  /** PTT unkey + squelch tail when the radio line dismisses */
   _playTailClick() {
-    if (!this.audio || !this.audio.started || this.audio.muted) return;
-    const ctx = this.audio.ctx;
+    const ctx = RadioChatter._resumeRadioCtx(this);
     if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const master = this.audio.master;
+    RadioChatter._pttMicClick(ctx, master, t0, false);
+    RadioChatter._squelchTailClose(ctx, master, t0 + 0.004);
+  }
+
+  static _resumeRadioCtx(radio) {
+    if (!radio.audio || !radio.audio.started || radio.audio.muted) return null;
+    const ctx = radio.audio.ctx;
+    if (!ctx) return null;
     if (ctx.state === 'suspended') {
       void ctx.resume();
     }
+    return ctx;
+  }
 
-    const t0 = ctx.currentTime;
+  /** Handheld PTT: low-frequency body + HF contact snap */
+  static _pttMicClick(ctx, master, startTime, isPress) {
+    const t0 = startTime;
+    const thumpHz = isPress ? 118 : 88;
+    const thumpPeak = isPress ? 0.128 : 0.076;
+    const snapPeak = isPress ? 0.098 : 0.054;
 
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(680, t0);
-    osc.frequency.exponentialRampToValueAtTime(320, t0 + 0.034);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0, t0);
-    og.gain.linearRampToValueAtTime(0.038, t0 + 0.003);
-    og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.04);
-    osc.connect(og);
-    og.connect(this.audio.master);
+    osc.frequency.setValueAtTime(thumpHz * 1.12, t0);
+    osc.frequency.exponentialRampToValueAtTime(thumpHz * 0.78, t0 + 0.036);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(thumpPeak, t0 + 0.0016);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.038);
+    osc.connect(g);
+    g.connect(master);
     osc.start(t0);
-    osc.stop(t0 + 0.045);
-    osc.onended = () => { osc.disconnect(); og.disconnect(); };
+    osc.stop(t0 + 0.042);
+    osc.onended = () => {
+      try { osc.disconnect(); } catch (_) {}
+      try { g.disconnect(); } catch (_) {}
+    };
 
-    const n = Math.floor(ctx.sampleRate * 0.018);
-    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) {
-      const e = i < n * 0.25 ? i / (n * 0.25) : (n - i) / (n * 0.75);
-      data[i] = (Math.random() * 2 - 1) * 0.1 * e;
+    RadioChatter._hfContactSnap(ctx, master, t0, snapPeak);
+
+    if (isPress) {
+      RadioChatter._hfContactSnap(ctx, master, t0 + 0.0038, snapPeak * 0.22);
+    }
+  }
+
+  static _hfContactSnap(ctx, master, t0, peak) {
+    const snapLen = Math.max(48, Math.floor(ctx.sampleRate * 0.0024));
+    const buf = ctx.createBuffer(1, snapLen, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < snapLen; i++) {
+      const e = i < snapLen * 0.35 ? i / (snapLen * 0.35) : 1;
+      d[i] = (Math.random() * 2 - 1) * e;
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2400;
+    const sg = ctx.createGain();
+    sg.gain.setValueAtTime(0.0001, t0);
+    sg.gain.linearRampToValueAtTime(peak, t0 + 0.00035);
+    sg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.0022);
+    src.connect(hp);
+    hp.connect(sg);
+    sg.connect(master);
+    src.start(t0);
+    src.stop(t0 + 0.003);
+    src.onended = () => {
+      try { src.disconnect(); } catch (_) {}
+      try { hp.disconnect(); } catch (_) {}
+      try { sg.disconnect(); } catch (_) {}
+    };
+  }
+
+  /** Narrow-band hiss when squelch opens (dispatch / VHF character) */
+  static _dispatchHissOpen(ctx, master, startTime) {
+    const t0 = startTime;
+    const dur = 0.22;
+    const n = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) {
+      const u = i / n;
+      let env = 1;
+      if (u < 0.07) env = u / 0.07;
+      else if (u > 0.78) env = (1 - u) / (1 - 0.78);
+      const flutter = 1 + 0.045 * Math.sin(i * 0.11);
+      data[i] = (Math.random() * 2 - 1) * env * flutter * 0.22;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 520;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 3050;
     const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 2100;
-    bp.Q.value = 1;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.14, t0 + 0.012);
-    src.connect(bp);
-    bp.connect(ng);
-    ng.connect(this.audio.master);
-    src.start(t0 + 0.012);
-    src.onended = () => { src.disconnect(); bp.disconnect(); ng.disconnect(); };
+    bp.type = 'peaking';
+    bp.frequency.value = 1650;
+    bp.Q.value = 0.55;
+    bp.gain.value = 3.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.175, t0 + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.048, t0 + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(bp);
+    bp.connect(g);
+    g.connect(master);
+    src.start(t0);
+    src.onended = () => {
+      try { src.disconnect(); } catch (_) {}
+      try { hp.disconnect(); } catch (_) {}
+      try { lp.disconnect(); } catch (_) {}
+      try { bp.disconnect(); } catch (_) {}
+      try { g.disconnect(); } catch (_) {}
+    };
+  }
+
+  /** Carrier / hiss dying after unkey (squelch gate) */
+  static _squelchTailClose(ctx, master, startTime) {
+    const t0 = startTime;
+    const dur = 0.072;
+    const n = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) {
+      const u = i / n;
+      const env = Math.pow(1 - u, 1.35) * (1 + 0.06 * Math.sin(i * 0.19));
+      data[i] = (Math.random() * 2 - 1) * env * 0.2;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 580;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(g);
+    g.connect(master);
+    src.start(t0);
+    src.onended = () => {
+      try { src.disconnect(); } catch (_) {}
+      try { hp.disconnect(); } catch (_) {}
+      try { lp.disconnect(); } catch (_) {}
+      try { g.disconnect(); } catch (_) {}
+    };
   }
 
   show(callsign, text, duration = 4000) {
