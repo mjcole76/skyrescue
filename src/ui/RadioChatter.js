@@ -17,7 +17,6 @@ export class RadioChatter {
   }
 
   resetForMission() {
-    this.cancelSpeech();
     this._pendingTimeouts.forEach(clearTimeout);
     this._pendingTimeouts.length = 0;
     this._ambientTimer = 0;
@@ -135,50 +134,56 @@ export class RadioChatter {
     osc.onended = () => { osc.disconnect(); og.disconnect(); };
   }
 
-  cancelSpeech() {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+  /** Short PTT-off style click when the radio line dismisses */
+  _playTailClick() {
+    if (!this.audio || !this.audio.started || this.audio.muted) return;
+    const ctx = this.audio.ctx;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      void ctx.resume();
     }
+
+    const t0 = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(680, t0);
+    osc.frequency.exponentialRampToValueAtTime(320, t0 + 0.034);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t0);
+    og.gain.linearRampToValueAtTime(0.038, t0 + 0.003);
+    og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.04);
+    osc.connect(og);
+    og.connect(this.audio.master);
+    osc.start(t0);
+    osc.stop(t0 + 0.045);
+    osc.onended = () => { osc.disconnect(); og.disconnect(); };
+
+    const n = Math.floor(ctx.sampleRate * 0.018);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) {
+      const e = i < n * 0.25 ? i / (n * 0.25) : (n - i) / (n * 0.75);
+      data[i] = (Math.random() * 2 - 1) * 0.1 * e;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2100;
+    bp.Q.value = 1;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.14, t0 + 0.012);
+    src.connect(bp);
+    bp.connect(ng);
+    ng.connect(this.audio.master);
+    src.start(t0 + 0.012);
+    src.onended = () => { src.disconnect(); bp.disconnect(); ng.disconnect(); };
   }
 
-  _speakMessage(callsign, text) {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    if (!this.audio || this.audio.muted || !this.audio.started) return;
-
-    window.speechSynthesis.cancel();
-
-    const line = `${callsign}. ${text}`.replace(/—/g, ', ');
-    const u = new SpeechSynthesisUtterance(line);
-    u.rate = 0.9;
-    u.pitch = 0.88;
-    u.volume = 0.92;
-
-    const runSpeak = () => {
-      const v2 = speechSynthesis.getVoices();
-      const pick = v2.find((v) => v.lang === 'en-US')
-        || v2.find((v) => v.lang && v.lang.startsWith('en'));
-      if (pick) u.voice = pick;
-      speechSynthesis.speak(u);
-    };
-
-    if (speechSynthesis.getVoices().length) {
-      runSpeak();
-    } else {
-      let done = false;
-      const once = () => {
-        if (done) return;
-        done = true;
-        speechSynthesis.removeEventListener('voiceschanged', once);
-        runSpeak();
-      };
-      speechSynthesis.addEventListener('voiceschanged', once, { once: true });
-      setTimeout(once, 400);
-    }
-  }
-
-  show(callsign, text, duration = 4000, { speak = true } = {}) {
+  show(callsign, text, duration = 4000) {
     this._ensureBuilt();
-    this._queue.push({ callsign, text, duration, speak });
+    this._queue.push({ callsign, text, duration });
     if (!this._showing) this._next();
   }
 
@@ -195,9 +200,6 @@ export class RadioChatter {
     this._el.style.display = 'block';
 
     this._playStaticBurst();
-    if (msg.speak !== false) {
-      this._speakMessage(msg.callsign, msg.text);
-    }
 
     // Typewriter effect
     let charIndex = 0;
@@ -213,6 +215,7 @@ export class RadioChatter {
 
     clearTimeout(this._hideTimer);
     this._hideTimer = setTimeout(() => {
+      this._playTailClick();
       this._el.style.display = 'none';
       setTimeout(() => this._next(), 300);
     }, msg.duration);
@@ -309,9 +312,7 @@ export class RadioChatter {
     if (timeLeft < 45) return;
 
     const ambient = RadioChatter._pickAmbient(passengersOnboard, survivorsSaved, totalSurvivors, missionId);
-    if (ambient) {
-      this.show(ambient[0], ambient[1], 3200 + Math.floor(Math.random() * 800), { speak: false });
-    }
+    if (ambient) this.show(ambient[0], ambient[1], 3200 + Math.floor(Math.random() * 800));
   }
 
   static _pickAmbient(passengersOnboard, saved, total, missionId) {
