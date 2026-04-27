@@ -25,6 +25,50 @@ export class RadioChatter {
     this._halfwaySavedDone = false;
   }
 
+  _ensureBuffers() {
+    if (this._buffersReady || !this.audio || !this.audio.ctx) return;
+    const ctx = this.audio.ctx;
+
+    // Pre-generate dispatch hiss buffer
+    const dur1 = 0.22;
+    const n1 = Math.floor(ctx.sampleRate * dur1);
+    const hissBuf = ctx.createBuffer(1, n1, ctx.sampleRate);
+    const d1 = hissBuf.getChannelData(0);
+    for (let i = 0; i < n1; i++) {
+      const u = i / n1;
+      let env = 1;
+      if (u < 0.07) env = u / 0.07;
+      else if (u > 0.78) env = (1 - u) / (1 - 0.78);
+      const flutter = 1 + 0.045 * Math.sin(i * 0.11);
+      d1[i] = (Math.random() * 2 - 1) * env * flutter * 0.22;
+    }
+    this._hissBuf = hissBuf;
+
+    // Pre-generate squelch tail buffer
+    const dur2 = 0.072;
+    const n2 = Math.floor(ctx.sampleRate * dur2);
+    const tailBuf = ctx.createBuffer(1, n2, ctx.sampleRate);
+    const d2 = tailBuf.getChannelData(0);
+    for (let i = 0; i < n2; i++) {
+      const u = i / n2;
+      const env = Math.pow(1 - u, 1.35) * (1 + 0.06 * Math.sin(i * 0.19));
+      d2[i] = (Math.random() * 2 - 1) * env * 0.2;
+    }
+    this._tailBuf = tailBuf;
+
+    // Pre-generate HF contact snap buffer
+    const snapLen = Math.max(48, Math.floor(ctx.sampleRate * 0.0024));
+    const snapBuf = ctx.createBuffer(1, snapLen, ctx.sampleRate);
+    const d3 = snapBuf.getChannelData(0);
+    for (let i = 0; i < snapLen; i++) {
+      const e = i < snapLen * 0.35 ? i / (snapLen * 0.35) : 1;
+      d3[i] = (Math.random() * 2 - 1) * e;
+    }
+    this._snapBuf = snapBuf;
+
+    this._buffersReady = true;
+  }
+
   _ensureBuilt() {
     if (this._built) return;
     this._built = true;
@@ -85,20 +129,21 @@ export class RadioChatter {
   _playStaticBurst() {
     const ctx = RadioChatter._resumeRadioCtx(this);
     if (!ctx) return;
+    this._ensureBuffers();
     const t0 = ctx.currentTime;
     const master = this.audio.master;
-    RadioChatter._pttMicClick(ctx, master, t0, true);
-    RadioChatter._dispatchHissOpen(ctx, master, t0 + 0.0025);
+    RadioChatter._pttMicClick(ctx, master, t0, true, this._snapBuf);
+    RadioChatter._dispatchHissOpen(ctx, master, t0 + 0.0025, this._hissBuf);
   }
 
-  /** PTT unkey + squelch tail when the radio line dismisses */
   _playTailClick() {
     const ctx = RadioChatter._resumeRadioCtx(this);
     if (!ctx) return;
+    this._ensureBuffers();
     const t0 = ctx.currentTime;
     const master = this.audio.master;
-    RadioChatter._pttMicClick(ctx, master, t0, false);
-    RadioChatter._squelchTailClose(ctx, master, t0 + 0.004);
+    RadioChatter._pttMicClick(ctx, master, t0, false, this._snapBuf);
+    RadioChatter._squelchTailClose(ctx, master, t0 + 0.004, this._tailBuf);
   }
 
   static _resumeRadioCtx(radio) {
@@ -112,7 +157,7 @@ export class RadioChatter {
   }
 
   /** Handheld PTT: low-frequency body + HF contact snap */
-  static _pttMicClick(ctx, master, startTime, isPress) {
+  static _pttMicClick(ctx, master, startTime, isPress, cachedSnapBuf) {
     const t0 = startTime;
     const thumpHz = isPress ? 118 : 88;
     const thumpPeak = isPress ? 0.128 : 0.076;
@@ -135,20 +180,23 @@ export class RadioChatter {
       try { g.disconnect(); } catch (_) {}
     };
 
-    RadioChatter._hfContactSnap(ctx, master, t0, snapPeak);
+    RadioChatter._hfContactSnap(ctx, master, t0, snapPeak, cachedSnapBuf);
 
     if (isPress) {
-      RadioChatter._hfContactSnap(ctx, master, t0 + 0.0038, snapPeak * 0.22);
+      RadioChatter._hfContactSnap(ctx, master, t0 + 0.0038, snapPeak * 0.22, cachedSnapBuf);
     }
   }
 
-  static _hfContactSnap(ctx, master, t0, peak) {
-    const snapLen = Math.max(48, Math.floor(ctx.sampleRate * 0.0024));
-    const buf = ctx.createBuffer(1, snapLen, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < snapLen; i++) {
-      const e = i < snapLen * 0.35 ? i / (snapLen * 0.35) : 1;
-      d[i] = (Math.random() * 2 - 1) * e;
+  static _hfContactSnap(ctx, master, t0, peak, cachedBuf) {
+    let buf = cachedBuf;
+    if (!buf) {
+      const snapLen = Math.max(48, Math.floor(ctx.sampleRate * 0.0024));
+      buf = ctx.createBuffer(1, snapLen, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < snapLen; i++) {
+        const e = i < snapLen * 0.35 ? i / (snapLen * 0.35) : 1;
+        d[i] = (Math.random() * 2 - 1) * e;
+      }
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -172,19 +220,22 @@ export class RadioChatter {
   }
 
   /** Narrow-band hiss when squelch opens (dispatch / VHF character) */
-  static _dispatchHissOpen(ctx, master, startTime) {
+  static _dispatchHissOpen(ctx, master, startTime, cachedBuf) {
     const t0 = startTime;
     const dur = 0.22;
-    const n = Math.floor(ctx.sampleRate * dur);
-    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) {
-      const u = i / n;
-      let env = 1;
-      if (u < 0.07) env = u / 0.07;
-      else if (u > 0.78) env = (1 - u) / (1 - 0.78);
-      const flutter = 1 + 0.045 * Math.sin(i * 0.11);
-      data[i] = (Math.random() * 2 - 1) * env * flutter * 0.22;
+    let buf = cachedBuf;
+    if (!buf) {
+      const n = Math.floor(ctx.sampleRate * dur);
+      buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) {
+        const u = i / n;
+        let env = 1;
+        if (u < 0.07) env = u / 0.07;
+        else if (u > 0.78) env = (1 - u) / (1 - 0.78);
+        const flutter = 1 + 0.045 * Math.sin(i * 0.11);
+        data[i] = (Math.random() * 2 - 1) * env * flutter * 0.22;
+      }
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -220,16 +271,19 @@ export class RadioChatter {
   }
 
   /** Carrier / hiss dying after unkey (squelch gate) */
-  static _squelchTailClose(ctx, master, startTime) {
+  static _squelchTailClose(ctx, master, startTime, cachedBuf) {
     const t0 = startTime;
     const dur = 0.072;
-    const n = Math.floor(ctx.sampleRate * dur);
-    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) {
-      const u = i / n;
-      const env = Math.pow(1 - u, 1.35) * (1 + 0.06 * Math.sin(i * 0.19));
-      data[i] = (Math.random() * 2 - 1) * env * 0.2;
+    let buf = cachedBuf;
+    if (!buf) {
+      const n = Math.floor(ctx.sampleRate * dur);
+      buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) {
+        const u = i / n;
+        const env = Math.pow(1 - u, 1.35) * (1 + 0.06 * Math.sin(i * 0.19));
+        data[i] = (Math.random() * 2 - 1) * env * 0.2;
+      }
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;

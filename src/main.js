@@ -148,6 +148,8 @@ function loadMissionBackground(index) {
 function launchMission(index) {
   // Init audio on first user gesture
   audio.init();
+  // Pre-generate radio audio buffers so first rescue doesn't pay creation cost
+  if (radio._ensureBuffers) radio._ensureBuffers();
 
   // Remove helicopter from scene, load mission, re-add helicopter
   scene.remove(helicopter.group);
@@ -207,7 +209,8 @@ const rescueCallbacks = {
       2000
     );
     audio.playPickup();
-    radio.survivorPickup(passengersOnboard, HELICOPTER.MAX_PASSENGERS);
+    // Defer radio chatter to next frame so it doesn't block the rescue moment
+    setTimeout(() => radio.survivorPickup(passengersOnboard, HELICOPTER.MAX_PASSENGERS), 350);
   },
   onRescueCancel() {
     hud.hideRescueBar();
@@ -220,7 +223,8 @@ const rescueCallbacks = {
       2500
     );
     audio.playDropoff();
-    radio.delivery(gameState.survivorsSaved, gameState.totalSurvivors);
+    // Defer radio chatter so dropoff sound plays cleanly first
+    setTimeout(() => radio.delivery(gameState.survivorsSaved, gameState.totalSurvivors), 400);
     if (gameState.allSaved()) {
       endMission(true);
     }
